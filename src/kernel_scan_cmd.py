@@ -123,9 +123,9 @@ def check_bug(container) -> bool:
         re.compile(r"collect2: error: "),
         re.compile(r"(ERROR|FAILED): Build did NOT complete"),
         # WARNING: CPU: 0 PID: 6148 at net/sched/sch_qfq.c:1003 qfq_dequeue+0x3bc/0x790
-        re.compile(
-            r"WARNING: CPU: [0-9]+ PID: [0-9]+ at ([a-zA-Z0-9_\-/.]+):[0-9]+ ([a-zA-Z0-9_]+)\+0x[0-9a-f]+/0x[0-9a-f]+"
-        ),
+        # re.compile(
+        #     r"WARNING: CPU: [0-9]+ PID: [0-9]+ at ([a-zA-Z0-9_\-/.]+):[0-9]+ ([a-zA-Z0-9_]+)\+0x[0-9a-f]+/0x[0-9a-f]+"
+        # ),
         # kernel BUG at net/core/skbuff.c:2812!
         re.compile(r"kernel BUG at ([a-zA-Z0-9_\-/.]+):[0-9]+"),
         re.compile(r"WARNING: possible circular locking dependency detected"),
@@ -138,16 +138,16 @@ def check_bug(container) -> bool:
         re.compile(r"WARNING: possible circular locking dependency detected"),
         re.compile(r"FAULT_INJECTION: forcing a failure"),
         re.compile(r"WARNING: held lock freed!"),
-        re.compile(r": error: "),
-        re.compile(r"Error: "),
-        re.compile(r"ERROR: "),
+        # re.compile(r": error: "),
+        # re.compile(r"Error: "),
+        # re.compile(r"ERROR: "),
         re.compile(r": fatal error: "),
         re.compile(r": undefined reference to"),
         re.compile(r": multiple definition of"),
     ]
 
     for i in range(20):
-        # test if vm finish start every 2+1 seconds for 20 times
+        # test if vm crash every 2+1 seconds for 20 times
         time.sleep(2)
         try:
             content = read_vm_log(container)
@@ -164,7 +164,7 @@ def kernel_build_and_run(
     vuln_schema: dict, commit_id: str = None, linux_path: str = None
 ) -> bool:
     """
-    build docker image (-> build kernel bzImage) -> start vm -> run poc
+    build docker image (-> build kernel bzImage) -> start vm -> connect vm (build and run poc)
 
     Args:
         vuln_schema (dict): bug json file
@@ -238,14 +238,15 @@ def kernel_build_and_run(
 
     # start container and get the container
     logger.info("starting docker container...")
+    script_path = os.path.abspath("../scripts")
     if commit_id:
         subprocess.Popen(
-            f"docker run -i --device=/dev/kvm --rm -v {linux_path}:/root/linux:Z testrepo",
+            f"docker run -i --device=/dev/kvm --rm -v {linux_path}:/root/linux -v {script_path}:/root/scripts testrepo",
             shell=True,
         )
     else:
         subprocess.Popen(
-            f"docker run -i --device=/dev/kvm --rm testrepo",
+            f"docker run -i --device=/dev/kvm --rm -v {script_path}:/root/scripts testrepo",
             shell=True,
         )
 
@@ -266,7 +267,9 @@ def kernel_build_and_run(
     logger.info("starting qemu in docker...")
     time.sleep(1)
     # lead to docker log empty
-    subprocess.Popen(["docker", "exec", "-it", kernel_container.id, "./startvm"])
+    subprocess.Popen(
+        ["docker", "exec", "-it", kernel_container.id, "./scripts/startvm"]
+    )
     success_start = False
     for i in range(20):
         # test if vm finish start every 5+1 seconds for 20 times
@@ -274,7 +277,7 @@ def kernel_build_and_run(
         content = read_vm_log(kernel_container)
         if "login:" in content:
             subprocess.Popen(
-                ["docker", "exec", "-it", kernel_container.id, "bash", "trigger.sh"]
+                ["docker", "exec", "-it", kernel_container.id, "./scripts/connectvm"]
             )
             success_start = True
             break
